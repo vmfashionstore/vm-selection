@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Liga Pontos — VM Fashion</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #f4f3f0;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    animation: fadeIn 0.5s ease forwards;
+  }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  .popup {
+    background: #fff;
+    width: 94vw;
+    max-width: 420px;
+    position: relative;
+    text-align: center;
+    padding: 1.5rem 1.25rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .btn-close {
+    position: absolute; top: 10px; right: 12px;
+    background: none; border: none;
+    font-size: 22px; cursor: pointer; color: #ccc;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-close:active { color: #333; }
+
+  .hint {
+    font-size: 9px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #888;
+    margin-bottom: 0.6rem;
+  }
+
+  canvas {
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  .progress-bar {
+    width: 100%; height: 1px;
+    background: #ebebeb;
+    margin-top: 0.6rem;
+  }
+  .progress-fill {
+    height: 100%; background: #111;
+    transition: width 0.12s ease; width: 0%;
+  }
+
+  .cta {
+    margin-top: 1rem;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    width: 100%;
+  }
+  .cta.visible { opacity: 1; transform: translateY(0); }
+  .cta p {
+    font-size: 9px; color: #aaa;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+  .cta a {
+    display: inline-block;
+    padding: 12px 30px;
+    background: #111; color: #fff;
+    font-size: 10px; letter-spacing: 0.2em;
+    text-transform: uppercase; text-decoration: none;
+    min-height: 44px; line-height: 20px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cta a:active { background: #555; }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay">
+  <div class="popup" id="popup">
+    <button class="btn-close" onclick="closePopup()" aria-label="Fechar">✕</button>
+    <p class="hint" id="hint"></p>
+    <canvas id="c"></canvas>
+    <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+    <div class="cta" id="cta">
+      <p>nova coleção disponível</p>
+      <a href="https://www.vmfashionstore.com.br/novidades">VM Selection</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PONTOS BASE (espaço 360×760) ──
+const PT_BASE = {
+   1:[149,18],  2:[180,20],  3:[213,17],  4:[223,39],  5:[180,44],
+   6:[145,37],  7:[149,18],  8:[125,100], 9:[130,185], 10:[158,182],
+  11:[169,180], 12:[195,181],13:[248,182],14:[256,199],15:[265,219],
+  16:[206,219], 17:[169,219],18:[169,219],19:[169,219],20:[119,219],21:[130,185],
+  22:[146,182], 23:[146,182],24:[169,180],25:[171,213],26:[169,219],
+  27:[149,219], 28:[145,210],29:[146,182],30:[145,210],31:[149,219],
+  32:[169,219], 33:[119,219],34:[105,297],35:[90,386],  36:[62,494],
+  37:[50,660],  38:[108,689],39:[108,660],40:[108,550], 41:[136,418],
+  42:[169,219], 43:[133,354],44:[149,219],45:[169,219], 46:[119,219],
+  47:[90,386],  48:[149,219],49:[169,219],50:[168,282], 51:[160,354],
+  52:[145,357], 53:[136,418],54:[108,550],55:[108,660], 56:[137,664],
+  57:[165,667], 58:[203,660],59:[183,522],60:[192,329], 61:[209,418],
+  62:[200,625], 63:[203,687],64:[289,683],65:[298,685], 66:[328,689],
+  67:[298,531], 68:[293,386],69:[288,329],70:[227,288], 71:[206,260],
+  72:[168,259], 73:[169,219],74:[206,219],75:[265,219], 76:[288,329],
+  77:[265,219], 78:[256,199],79:[248,182],80:[250,100], 81:[223,39],
+};
+
+const SEQ = [
+   1, 2, 3, 4, 5, 6, 7, 8, 9,10,
+  11,12,13,14,15,16,17,18,19,20,21,
+  22,23,24,25,26,27,28,29,30,31,
+  32,33,34,35,36,37,38,39,40,41,
+  42,44,45,46,47,48,49,
+  52,53,54,55,56,57,58,59,60,61,
+  62,63,64,65,66,67,68,69,70,71,
+  73,74,75,76,77,78,79,80,81,
+];
+
+const BASE_W = 360, BASE_H = 760;
+
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const progEl  = document.getElementById('prog');
+const ctaEl   = document.getElementById('cta');
+const hintEl  = document.getElementById('hint');
+const overlay = document.getElementById('overlay');
+
+let scale = 1, W = BASE_W, H = BASE_H;
+let PT = {}, SEGS = [];
+const revealed = new Float32Array(SEQ.length + 10);
+let ctaShown = false, raf;
+
+function calcSize() {
+  const dpr = window.devicePixelRatio || 1;
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
+
+  // Largura disponível dentro do popup (94vw, max 420, menos 40px padding)
+  const availW = Math.min(vw * 0.94, 420) - 40;
+  // Altura disponível para o canvas (viewport menos elementos fixos)
+  const availH = vh - 180; // hint + progress + cta + padding + close btn
+
+  scale = Math.min(availW / BASE_W, availH / BASE_H, 1);
+  W = Math.round(BASE_W * scale);
+  H = Math.round(BASE_H * scale);
+
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Escala os pontos
+  PT = {};
+  for (const n in PT_BASE) {
+    PT[n] = [PT_BASE[n][0] * scale, PT_BASE[n][1] * scale];
+  }
+
+  // Reconstrói segmentos
+  SEGS = [];
+  for (let i = 0; i < SEQ.length - 1; i++) {
+    const a = PT[SEQ[i]], b = PT[SEQ[i+1]];
+    if (a && b) SEGS.push([a, b]);
+  }
+}
+
+function d2seg(mx, my, ax, ay, bx, by) {
+  const dx = bx-ax, dy = by-ay, l2 = dx*dx+dy*dy;
+  if (l2 === 0) return Math.hypot(mx-ax, my-ay);
+  const t = Math.max(0, Math.min(1, ((mx-ax)*dx+(my-ay)*dy)/l2));
+  return Math.hypot(mx-(ax+t*dx), my-(ay+t*dy));
+}
+
+function reveal(mx, my) {
+  const R = 80 * scale;
+  for (let i = 0; i < SEGS.length; i++) {
+    const [a, b] = SEGS[i];
+    const d = d2seg(mx, my, a[0], a[1], b[0], b[1]);
+    if (d < R) {
+      const inf = Math.pow(1 - d/R, 0.55) * 1.9;
+      if (inf > revealed[i]) revealed[i] = Math.min(1, inf);
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Pontos
+  const drawn = new Set();
+  SEQ.forEach(n => {
+    if (!PT[n]) return;
+    const key = PT[n][0] + ',' + PT[n][1];
+    if (drawn.has(key)) return;
+    drawn.add(key);
+    const [x, y] = PT[n];
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1.2, 1.5 * scale), 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(160,160,160,0.5)';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(160,160,160,0.55)';
+    ctx.font = Math.max(6, Math.round(7 * scale)) + 'px Helvetica Neue,Arial,sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(n, x + 2*scale, y - 2*scale);
+  });
+
+  // Segmentos
+  let total = 0;
+  for (let i = 0; i < SEGS.length; i++) {
+    const f = revealed[i];
+    total += f;
+    if (f < 0.004) continue;
+    const [a, b] = SEGS[i];
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f);
+    ctx.strokeStyle = `rgba(18,18,18,${0.6+f*0.4})`;
+    ctx.lineWidth = Math.max(0.6, 0.85 * scale);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  const pct = (total / SEGS.length) * 100;
+  progEl.style.width = Math.min(100, pct).toFixed(1) + '%';
+  if (pct >= 70 && !ctaShown) {
+    ctaShown = true;
+    ctaEl.classList.add('visible');
+  }
+}
+
+// Hint adaptado ao dispositivo
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+hintEl.textContent = isTouch ? 'arraste o dedo para revelar' : 'mova o mouse para revelar';
+
+// Mouse
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  reveal(e.clientX - r.left, e.clientY - r.top);
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(draw);
+});
+
+// Touch — múltiplos dedos, start + move
+function handleTouch(e) {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  for (let i = 0; i < e.touches.length; i++) {
+    const t = e.touches[i];
+    reveal(t.clientX - r.left, t.clientY - r.top);
+  }
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(draw);
+}
+canvas.addEventListener('touchstart', handleTouch, { passive: false });
+canvas.addEventListener('touchmove',  handleTouch, { passive: false });
+
+function openPopup() {
+  calcSize();
+  for (let i = 0; i < revealed.length; i++) revealed[i] = 0;
+  ctaShown = false;
+  ctaEl.classList.remove('visible');
+  progEl.style.width = '0%';
+  overlay.style.display = 'flex';
+  overlay.style.opacity = '1';
+  overlay.style.animation = 'none';
+  void overlay.offsetWidth;
+  overlay.style.animation = 'fadeIn 0.5s ease forwards';
+  draw();
+}
+
+function closePopup() {
+  overlay.style.display = 'none';
+}
+
+overlay.addEventListener('click', e => { if (e.target === overlay) closePopup(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
+window.addEventListener('resize', () => {
+  if (overlay.style.display !== 'none') { calcSize(); draw(); }
+});
+
+// Abre em qualquer situação — arquivo local, servidor, iOS Safari
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', openPopup);
+} else {
+  openPopup();
+}
+window.onload = function() {
+  if (overlay.style.display === 'none') openPopup();
+};
+// Fallback extra para iOS Safari com arquivo local
+setTimeout(function() {
+  if (overlay.style.display === 'none') openPopup();
+}, 300);
+</script>
+</body>
+</html>
