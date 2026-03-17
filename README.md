@@ -1,1 +1,1 @@
-# vmfashionstore
+# vm-selection
